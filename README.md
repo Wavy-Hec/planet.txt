@@ -70,8 +70,8 @@ The signals you have found are kept in your browser, so a planet you come back t
 | `?seed=glacier` at night: an aurora | `?seed=nova`: a giant planet over a molten world |
 
 Also worth a visit: `home` (a cratered moon with a ring) and `reef` (heather moors whose firs glow at night).
-A seed that is a lowercase word of up to ten letters, alone or with a number of up to four digits
-(`glacier`, `kelp-412`), names its world; any other gets a word from rock, weather or the sea and a
+A seed that is a lowercase word of up to ten letters, alone or followed by a hyphen and a number of up
+to four digits (`glacier`, `kelp-412`), names its world; any other gets a word from rock, weather or the sea and a
 catalogue number, such as Haar 412.
 
 On some worlds the moon's path crosses the sun's, and every half hour or so it passes in front of it.
@@ -79,8 +79,8 @@ Its shadow crosses the planet; where it is total the sky goes dark, the stars co
 horizon glows all the way round. `?seed=coral` and `?seed=dust` are two of them.
 
 Every frozen world and some others have an aurora: curtains of green light round both magnetic poles,
-red higher up, drawn in vertical strokes, that brighten and fade over a few minutes and show in the
-sea. Meteors cross the night sky on every world with air, now and then a fireball that lights the
+red higher up, drawn in vertical strokes, that brighten and fade over a few minutes and, once the
+night is dark, show faintly in the sea. Meteors cross the night sky on every world with air, now and then a fireball that lights the
 land; on some worlds they come in a shower from one point of the sky. Try `?seed=glacier` at night.
 On the wetter worlds mist gathers in the low ground after dark and is thickest at dawn, so hills stand
 out of it, until the sun burns it off. Snow comes in spells: anywhere on a frozen world, and on the

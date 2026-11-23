@@ -1205,6 +1205,7 @@ layout(location = 0) out vec4 o;
 layout(location = 1) out vec4 info;
 float glow;   // how much of this pixel is a light source, 0..1
 vec3 icy;     // light the ice in the air throws round the sun: in front of the ring, behind the clouds
+vec3 mirrored;   // the aurora as the sea mirrors it: lost in a lit sky like the aurora itself, so kept apart from the sea's colour
 float mat;    // which set of characters it gets, an index into RAMPS
 
 uint ih(uint x) { x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16; return x; }
@@ -1847,16 +1848,18 @@ vec3 surface(vec3 ro, vec3 rd, float t) {
   float glint = pow(sp, mix(90., 34., calm)) * mix(4., 1.1, calm);
   glow = min(glint * .06, 1.) * vis;
   vec3 sky = skyCol() * day * .3 + .008;
-  if (uAurora.w > 0. && fres > .03 && mu < -.2) {
-    // At night the water mirrors the aurora: as much of it as the clouds over the water let through, and
-    // as much as the light of the sky along the mirrored ray leaves showing, as with the aurora in the sky
+  if (uAurora.w > 0. && fres > .03 && mu < .05) {
+    // The water mirrors the aurora: as much of it as the clouds over the water let through, and as much
+    // as the light of the sky along the mirrored ray leaves showing, as with the aurora in the sky. Where
+    // the sun is still up it mirrors none, and it comes in evenly as the sun goes under, so the sea has
+    // no line across it where it starts; main() then hides it in the light of the air this side of it.
     vec3 r = reflect(rd, wn), beyond, through;
     vec2 cs = sphere(p, r, uR + uCloud.y);
     bool deck = uCloud.w > 0. && cs.y > 0.;
     vec3 seen = aurora(p + d * .05, r, 1e5, deck ? cs.y : 1e9, beyond);
     if (dot(seen + beyond, vec3(1.)) > 0.) {
       float dark = clamp(1. - dot(atmosphere(p + d * .05, r, 1e5, through), vec3(4.)), 0., 1.);
-      sky += (seen + beyond * (deck ? 1. - cloudAt(normalize(p + r * cs.y)) * uCloud.w : 1.)) * dark * through;
+      mirrored = (seen + beyond * (deck ? 1. - cloudAt(normalize(p + r * cs.y)) * uCloud.w : 1.)) * dark * through * fres * smoothstep(.05, -.1, mu);
     }
   }
   return wc * light * (1. - fres) + sky * fres + sun * (glint + pow(sp, 10.) * .2);
@@ -2038,7 +2041,7 @@ void main() {
   float t = march(ro, rd), tEnd = t > 0. ? t : 1e5;
   vec3 col, st = vec3(0.), mt = vec3(0.);   // st: starlight; mt: a meteor's
   glow = 0.;
-  icy = vec3(0.);
+  icy = mirrored = vec3(0.);
   mat = ${VOID}.;
   if (trees(ro, rd, tEnd, col)) {}
   else if (t > 0.) col = surface(ro, rd, t);
@@ -2134,7 +2137,7 @@ void main() {
         }
         tEnd = ts;
         mat = part > 4.5 ? (what < 1.5 ? ${SPIRE}. : ${ROCK}.) : ${SHIP}.;
-        st = mt = icy = vec3(0.);
+        st = mt = icy = mirrored = vec3(0.);
       }
     }
   }
@@ -2221,7 +2224,9 @@ void main() {
   float dark = clamp(1. - dot(sc, vec3(4.)), 0., 1.);
   au *= dark * tr;
   mt *= dark * tr;
-  col = (col + st * dark) * tr + sc + au + mt;
+  // the sea's mirrored aurora with them, behind whatever mist and cloud lie this side of the water
+  mirrored *= ms.a * clear * fog * dark * tr;
+  col = (col + st * dark) * tr + sc + au + mt + mirrored;
   // open sky, moon included; and the glow round the sun in space, which is light and not a field of marks
   if (t < 0. && tEnd > 9e4 && mat != ${CLOUD}. && mat != ${RING}. && (dot(sc, vec3(1.)) > .03 || (mat == ${VOID}. && halo > .05))) mat = ${SKY}.;
   // the aurora and a meteor get characters of their own where they are most of what is seen
