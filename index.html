@@ -1425,14 +1425,16 @@ float fir(vec3 q, float r, float h, float fade, float seed) {
 // a shadow comes from how close the ray passes over the ground: 9 times that height over the distance
 // gone, and past 15 m over 15 m, so a far shadow's edge is 1.7 m wide. With the width fixed, the ray
 // may skip the ground wherever the maps put it more than that width above everything, and miss nothing.
-float shadow(vec3 p) {
+// The ray goes from p toward dir: toward the sun for a shadow, and along a mirrored ray for what the land
+// hides from the sea.
+float shadow(vec3 p, vec3 dir) {
   float res = 1., t = .6, a = -1e9, room = 0., lv = 0., roof = 6.;
   bool air = false;
   for (int i = 0; i < 64; i++) {
-    vec3 q = p + uSun * t;
+    vec3 q = p + dir * t;
     float r = length(q), alt = r - uR;
     if (r > uR + uTop) break;
-    float rise = dot(uSun, q) / r, across = max(sqrt(max(1. - rise * rise, 0.)), .05);
+    float rise = dot(dir, q) / r, across = max(sqrt(max(1. - rise * rise, 0.)), .05);
     if (!air) {
       if (a < -1e8) {
         a = alt - ground(q);
@@ -1585,9 +1587,11 @@ bool cone(float A, float B, float C, float D, float th, out vec2 t) {
   t = vec2(q / (abs(qa) < 1e-9 ? 1e-9 : qa), qc / q);
   return true;
 }
-// What lies beyond tCut along the ray (the cloud deck) goes into far, for the caller to cover.
-vec3 aurora(vec3 ro, vec3 rd, float tEnd, float tCut, out vec3 far) {
+// What lies beyond tCut along the ray (the cloud deck) goes into far, for the caller to cover. at is how
+// far along the ray the light found is: the distances to the curtains crossed, weighted by their light.
+vec3 aurora(vec3 ro, vec3 rd, float tEnd, float tCut, out vec3 far, out float at) {
   far = vec3(0.);
+  at = 0.;
   if (uAurora.w <= 0.) return vec3(0.);
   float lo = uR + uAuroraB.y * .93, hi = uR + uAuroraB.z;   // .93: the lowest the foot wavers down to
   vec2 top = sphere(ro, rd, hi);
@@ -1607,6 +1611,7 @@ vec3 aurora(vec3 ro, vec3 rd, float tEnd, float tCut, out vec3 far) {
     if (ang < a0 || ang > a1) return vec3(0.);
   }
   vec3 sum = vec3(0.), g0 = vec3(0.);
+  float lightAt = 0., lightAll = 0.;
   // Each look compares cosines rather than angles, so it needs no acos: the cosine of a curtain's angle,
   // which wavers by at most .063 rad about its mean, is taken to first order about the mean's (good to
   // three metres or so, where the waves all peak together). Nor does it need the longitude itself: its
@@ -1668,7 +1673,10 @@ vec3 aurora(vec3 ro, vec3 rd, float tEnd, float tCut, out vec3 far) {
     float night = smoothstep(-.15, .35, -dot(q, uSun));
     vec3 e = (uAuroraLow * green + uAuroraHigh * red) * mix(rays, 1., u * .5) * arcs * seen * night * (1. - float(k) * .3);
     if (tc > tCut) far += e; else sum += e;
+    lightAt += tc * dot(e, vec3(1.));
+    lightAll += dot(e, vec3(1.));
   }
+  if (lightAll > 0.) at = lightAt / lightAll;
   far *= uAurora.w;
   return sum * uAurora.w;
 }
@@ -1792,7 +1800,7 @@ vec3 surface(vec3 ro, vec3 rd, float t) {
   float mu = dot(d, uSun), day = smoothstep(-.25, .25, mu);
   vec3 amb = skyCol() * day * .1 + vec3(.03, .035, .05) + (auroraGlow(d) + flash(n)) * (1. - day);
   float ndl = max(dot(n, uSun), 0.), vis = 1.;
-  if (ndl > 0.) vis = shadow(p + n * .3);
+  if (ndl > 0.) vis = shadow(p + n * .3, uSun);
   if (ndl > 0. || sea) vis *= skyShade(p);   // a face turned from the sun has no use for it
   vec3 sun = uSunCol * sunTint(mu, 1.5) * vis;
   vec3 light = sun * ndl + amb;
@@ -1848,18 +1856,29 @@ vec3 surface(vec3 ro, vec3 rd, float t) {
   float glint = pow(sp, mix(90., 34., calm)) * mix(4., 1.1, calm);
   glow = min(glint * .06, 1.) * vis;
   vec3 sky = skyCol() * day * .3 + .008;
-  if (uAurora.w > 0. && fres > .03 && mu < .05) {
-    // The water mirrors the aurora: as much of it as the clouds over the water let through, and as much
-    // as the light of the sky along the mirrored ray leaves showing, as with the aurora in the sky. Where
-    // the sun is still up it mirrors none, and it comes in evenly as the sun goes under, so the sea has
-    // no line across it where it starts; main() then hides it in the light of the air this side of it.
-    vec3 r = reflect(rd, wn), beyond, through;
+  if (uAurora.w > 0. && fres > .03 && mu < -.05) {
+    // The water mirrors the aurora, and no more of it than the sky shows. The light of the air hides it as
+    // it hides the aurora itself, by whichever is the brighter: the air on the straight line from the eye
+    // to the curtains mirrored (as far as the ground, if that line goes on to meet it), which is what
+    // hides those same curtains in the sky, or the air along the mirrored ray from the water. On a planet
+    // this small the far water is well into the night while the eye still stands in twilight, and going
+    // by the water alone the sea showed curtains at dusk some seconds before the sky did. Land in the way
+    // of the mirrored ray hides it too (the ray is lifted over the soft edge a shadow has, 1.7 m, and kept
+    // from pointing down, so the flat sea never counts as land), and so do the clouds over the water. It
+    // comes in evenly once the sun is under at the water, so the sea has no line across it where it
+    // starts; main() then hides it in the light of the air this side of it.
+    vec3 r = reflect(rd, wn), beyond, through = vec3(0.), same;
+    float off;
     vec2 cs = sphere(p, r, uR + uCloud.y);
     bool deck = uCloud.w > 0. && cs.y > 0.;
-    vec3 seen = aurora(p + d * .05, r, 1e5, deck ? cs.y : 1e9, beyond);
+    vec3 seen = aurora(p + d * .05, r, 1e5, deck ? cs.y : 1e9, beyond, off);
     if (dot(seen + beyond, vec3(1.)) > 0.) {
-      float dark = clamp(1. - dot(atmosphere(p + d * .05, r, 1e5, through), vec3(4.)), 0., 1.);
-      mirrored = (seen + beyond * (deck ? 1. - cloudAt(normalize(p + r * cs.y)) * uCloud.w : 1.)) * dark * through * fres * smoothstep(.05, -.1, mu);
+      vec3 v = normalize(p + r * off - ro);
+      vec2 gs = sphere(ro, v, uR);
+      float dark = clamp(1. - dot(atmosphere(ro, v, hits(gs) ? gs.x : 1e5, same), vec3(4.)), 0., 1.);
+      if (dark > 0.) dark = min(dark, clamp(1. - dot(atmosphere(p + d * .05, r, 1e5, through), vec3(4.)), 0., 1.));
+      if (dark > 0.) dark *= shadow(p + d * 1.7, normalize(r - d * min(dot(r, d), 0.)));
+      if (dark > 0.) mirrored = (seen + beyond * (deck ? 1. - cloudAt(normalize(p + r * cs.y)) * uCloud.w : 1.)) * dark * through * fres * smoothstep(-.05, -.1, mu);
     }
   }
   return wc * light * (1. - fres) + sky * fres + sun * (glint + pow(sp, 10.) * .2);
@@ -2017,7 +2036,7 @@ bool trees(vec3 ro, vec3 rd, inout float tEnd, out vec3 col) {
     // The sun on a bough, and the sun that comes through one: the light that shines through is seen at the
     // edges of the tree against the sun, where the boughs are turned sideways to it and their shadow test
     // is the same one.
-    vec3 sun = dot(n, uSun) > 0. ? sunC * shadow(p + n * .3) : vec3(0.);
+    vec3 sun = dot(n, uSun) > 0. ? sunC * shadow(p + n * .3, uSun) : vec3(0.);
     // A little variety from tree to tree; the ends of the branches lighter and yellower; clumps of needles,
     // which fade out as the tree gets further off before they are as small as a character.
     float F = ts * uPix * 8.;
@@ -2082,7 +2101,7 @@ void main() {
         // a hill, a cloud or the ring shades it too (a wreck or a cairn is asked 3 m up, clear of the patch
         // of shade it throws itself)
         vec3 sunL = uSunCol * sunTint(dot(up, uSun), 1.) * (1. - .75 * under) * smoothstep(-.1, .1, dot(up, uSun))
-                  * shadow(at.xyz + up * .6) * skyShade(at.xyz + up * (what > 1.5 ? 3. : 0.));
+                  * shadow(at.xyz + up * .6, uSun) * skyShade(at.xyz + up * (what > 1.5 ? 3. : 0.));
         float day = smoothstep(-.25, .25, dot(up, uSun)), facing = dot(n, up) * .5 + .5;
         vec3 amb = skyCol() * .12 * day + vec3(.04, .045, .055);
         // What metal and glass mirror: the sky above the horizon, in its colour; below it the ground round
@@ -2213,8 +2232,9 @@ void main() {
   // The aurora is above the clouds: what of it lies beyond where the ray last crosses the cloud deck is
   // behind the clouds, which from under them is all of it; and from under them the mist is in front of it
   vec3 auFar;
+  float auAt;
   vec2 deck = sphere(ro, rd, uR + uCloud.y);
-  vec3 au = aurora(ro, rd, tEnd, uCloud.w > 0. && deck.y > 0. ? deck.y : 1e9, auFar);
+  vec3 au = aurora(ro, rd, tEnd, uCloud.w > 0. && deck.y > 0. ? deck.y : 1e9, auFar, auAt);
   au = (au + auFar * clear) * fog * (high ? 1. : ms.a);
 
   vec3 tr;
