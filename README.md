@@ -80,7 +80,7 @@ horizon glows all the way round. `?seed=coral` and `?seed=dust` are two of them.
 
 Every frozen world and some others have an aurora: curtains of green light round both magnetic poles,
 red higher up, drawn in vertical strokes, that brighten and fade over a few minutes and, once the
-night is dark, show faintly in the sea. Meteors cross the night sky on every world with air, now and then a fireball that lights the
+night is dark, show faintly in the sea where no mist lies over it. Meteors cross the night sky on every world with air, now and then a fireball that lights the
 land; on some worlds they come in a shower from one point of the sky. Try `?seed=glacier` at night.
 On the wetter worlds mist gathers in the low ground after dark and is thickest at dawn, so hills stand
 out of it, until the sun burns it off. Snow comes in spells: anywhere on a frozen world, and on the
