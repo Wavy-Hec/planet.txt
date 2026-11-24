@@ -1859,24 +1859,26 @@ vec3 surface(vec3 ro, vec3 rd, float t) {
   if (uAurora.w > 0. && fres > .03 && mu < -.05) {
     // The water mirrors the aurora, and no more of it than the sky shows. The light of the air hides it as
     // it hides the aurora itself, by whichever is the brighter: the air on the straight line from the eye
-    // to the curtains mirrored (as far as the ground, if that line goes on to meet it), which is what
-    // hides those same curtains in the sky, or the air along the mirrored ray from the water. On a planet
-    // this small the far water is well into the night while the eye still stands in twilight, and going
-    // by the water alone the sea showed curtains at dusk some seconds before the sky did. Land in the way
-    // of the mirrored ray hides it too (the ray is lifted over the soft edge a shadow has, 1.7 m, and kept
-    // from pointing down, so the flat sea never counts as land), and so do the clouds over the water. It
-    // comes in evenly once the sun is under at the water, so the sea has no line across it where it
-    // starts; main() then hides it in the light of the air this side of it.
+    // to the curtains mirrored, which is what hides those same curtains in the sky, or the air along the
+    // mirrored ray from the water. On a planet this small the far water is well into the night while the
+    // eye still stands in twilight, and going by the water alone the sea showed curtains at dusk some
+    // seconds before the sky did. The mist goes by the same rule, the thicker of the mist on those two
+    // ways to the curtains: main() counts the mist between the eye and the water, and with that alone the
+    // sea close by showed curtains at dawn that the mist had taken out of the sky. Land in the way of
+    // the mirrored ray hides it too (the ray is lifted over the soft edge a shadow has, 1.7 m, and kept
+    // from pointing down, so the flat sea never counts as land; a bank lower than that hides only part),
+    // and so do the clouds over the water. It comes in evenly once the sun is under at the water, so the
+    // sea has no line across it where it starts; main() then hides it in the light of the air this side.
     vec3 r = reflect(rd, wn), beyond, through = vec3(0.), same;
     float off;
     vec2 cs = sphere(p, r, uR + uCloud.y);
     bool deck = uCloud.w > 0. && cs.y > 0.;
     vec3 seen = aurora(p + d * .05, r, 1e5, deck ? cs.y : 1e9, beyond, off);
     if (dot(seen + beyond, vec3(1.)) > 0.) {
-      vec3 v = normalize(p + r * off - ro);
-      vec2 gs = sphere(ro, v, uR);
-      float dark = clamp(1. - dot(atmosphere(ro, v, hits(gs) ? gs.x : 1e5, same), vec3(4.)), 0., 1.);
+      vec3 to = p + r * off - ro, v = normalize(to);
+      float dark = clamp(1. - dot(atmosphere(ro, v, 1e5, same), vec3(4.)), 0., 1.);
       if (dark > 0.) dark = min(dark, clamp(1. - dot(atmosphere(p + d * .05, r, 1e5, through), vec3(4.)), 0., 1.));
+      if (dark > 0.) dark *= min(mist(ro, v, length(to)).a, mist(p + d * .05, r, off).a);
       if (dark > 0.) dark *= shadow(p + d * 1.7, normalize(r - d * min(dot(r, d), 0.)));
       if (dark > 0.) mirrored = (seen + beyond * (deck ? 1. - cloudAt(normalize(p + r * cs.y)) * uCloud.w : 1.)) * dark * through * fres * smoothstep(-.05, -.1, mu);
     }
